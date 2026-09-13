@@ -226,6 +226,22 @@ function setCount(code,value){
  if(n===0) delete db.counts[code]; else db.counts[code]=n;
  save(); const p=product(code); if(p) showCurrent(p,n); toast('Quantidade corrigida');
 }
+function removeCountItem(code){
+ const p=product(code)||{name:'Produto'};
+ if(!confirm('Remover '+p.name+' da conferência? O cadastro do produto será mantido.'))return;
+ delete db.counts[code];db.history=db.history.filter(h=>h.code!==code);save();toast('Item removido da conferência');
+}
+function removeHistoryReading(index){
+ const h=db.history[index];if(!h)return;
+ if(!confirm('Excluir esta leitura?'))return;
+ const qty=Number(db.counts[h.code]||0);if(qty<=1)delete db.counts[h.code];else db.counts[h.code]=qty-1;
+ db.history.splice(index,1);save();toast('Leitura excluída');
+}
+function clearReadings(){
+ if(!Object.keys(db.counts).length)return toast('Não há leituras para limpar');
+ if(!confirm('Limpar todas as leituras e zerar a conferência? Os produtos cadastrados serão mantidos.'))return;
+ db.counts={};db.history=[];save();toast('Todas as leituras foram removidas');
+}
 function showCurrent(p,q){
  const c=document.getElementById('current');c.classList.remove('hidden');
  const unknown = !db.products[p.code] || p.name==='Produto não cadastrado';
@@ -311,7 +327,9 @@ function refresh(){
  document.getElementById('sItens').textContent=codes.reduce((a,c)=>a+db.counts[c],0);
  let dif=codes.filter(c=>product(c)&&product(c).stock!=null&&db.counts[c]!==Number(product(c).stock)).length;
  document.getElementById('sDif').textContent=dif;
- document.getElementById('recent').innerHTML=db.history.slice(0,12).map(h=>'<div style="padding:8px 0;border-bottom:1px solid #eee"><b>'+escapeHtml(product(h.code)?.name||'Produto')+'</b> • '+escapeHtml(h.code)+' • +1 <span class="muted">'+h.time+'</span></div>').join('')||'<div class="empty">Nenhuma leitura ainda.</div>';
+ document.getElementById('recent').innerHTML=(db.history.length?'<div style="text-align:right;margin-bottom:8px"><button class="danger" id="clearReadingsBtn">🗑️ Limpar tudo</button></div>':'')+db.history.slice(0,12).map((h,i)=>'<div style="padding:8px 0;border-bottom:1px solid #eee;display:flex;gap-content:space-between;justify-content:space-between;gap:8px;align-items:center"><div><b>'+escapeHtml(product(h.code)?.name||'Produto')+'</b><br><span class="muted">'+escapeHtml(h.code)+' • +1 • '+h.time+'</span></div><button class="danger" data-remove-reading="'+i+'" aria-label="Excluir leitura">🗑️</button></div>').join('')||'<div class="empty">Nenhuma leitura ainda.</div>';
+ document.querySelectorAll('[data-remove-reading]').forEach(b=>b.onclick=()=>removeHistoryReading(Number(b.getAttribute('data-remove-reading'))));
+ const clearBtn=document.getElementById('clearReadingsBtn');if(clearBtn)clearBtn.onclick=clearReadings;
  renderProductTable(document.getElementById('productSearch')?.value||'');
  renderResult();
 }
@@ -325,7 +343,7 @@ document.getElementById('cancelEdit').onclick=()=>{delete document.getElementByI
 document.getElementById('txtFile').onchange=e=>{let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{let lines=String(r.result).split(/\r?\n/),n=0;for(const line of lines){if(!line.trim())continue;let m=line.match(/^(\d{6})/);if(m){let code=m[1], desc=line.slice(18).trim()||line.slice(6).trim(); if(!db.products[code]){db.products[code]={code,name:desc,altCode:'',unit:'UN'};n++}}}save();document.getElementById('importMsg').textContent=n+' produto(s) importado(s) ou incluído(s).';toast('Importação concluída')};r.readAsText(f,'UTF-8')};
 function download(name,text,type='text/plain'){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
 function resultRows(){const q=String(document.getElementById('resultSearch')?.value||'').trim().toLowerCase();const f=document.getElementById('resultFilter')?.value||'todos';return Object.keys(db.counts).map(c=>{const p=product(c)||{};const counted=Number(db.counts[c]||0);const stock=p.stock==null?null:Number(p.stock);const diff=stock==null?null:counted-stock;return{c,p,counted,stock,diff};}).filter(r=>{const text=(r.c+' '+(r.p.name||'')+' '+(r.p.altCode||'')).toLowerCase();if(q&&!text.includes(q))return false;if(f==='dif'&&!(r.diff!==null&&r.diff!==0))return false;if(f==='ok'&&r.diff!==0)return false;if(f==='mais'&&!(r.diff!==null&&r.diff>0))return false;if(f==='menos'&&!(r.diff!==null&&r.diff<0))return false;if(f==='semestoque'&&r.stock!==null)return false;return true;});}
-function renderResult(){const all=Object.keys(db.counts);const itens=all.reduce((a,c)=>a+Number(db.counts[c]||0),0);let dif=0,ok=0;all.forEach(c=>{const p=product(c);if(p&&p.stock!=null){if(Number(db.counts[c])!==Number(p.stock))dif++;else ok++;}});document.getElementById('rProdutos').textContent=all.length;document.getElementById('rItens').textContent=itens;document.getElementById('rDif').textContent=dif;document.getElementById('rOk').textContent=ok;const rows=resultRows();document.getElementById('resultTable').innerHTML=rows.length?'<div style="overflow:auto"><table><thead><tr><th>Produto</th><th>Contado</th><th>Sistema</th><th>Diferença</th><th>Status</th></tr></thead><tbody>'+rows.map(r=>{const d=r.diff;const status=d===null?'<span class="badge">Sem estoque</span>':d===0?'<span class="ok">✓ Conferido</span>':d>0?'<span class="warn">▲ Sobra</span>':'<span style="color:#b42318;font-weight:700">▼ Falta</span>';return '<tr><td><b>'+escapeHtml(r.p.name||'Não cadastrado')+'</b><br><span class="muted">'+escapeHtml(r.c)+'</span></td><td>'+r.counted+'</td><td>'+(r.stock===null?'—':r.stock)+'</td><td>'+(d===null?'—':(d>0?'+':'')+d)+'</td><td>'+status+'</td></tr>';}).join('')+'</tbody></table></div>':'<div class="empty">Nenhum item encontrado para esse filtro.</div>';}
+function renderResult(){const all=Object.keys(db.counts);const itens=all.reduce((a,c)=>a+Number(db.counts[c]||0),0);let dif=0,ok=0;all.forEach(c=>{const p=product(c);if(p&&p.stock!=null){if(Number(db.counts[c])!==Number(p.stock))dif++;else ok++;}});document.getElementById('rProdutos').textContent=all.length;document.getElementById('rItens').textContent=itens;document.getElementById('rDif').textContent=dif;document.getElementById('rOk').textContent=ok;const rows=resultRows();document.getElementById('resultTable').innerHTML=rows.length?'<div style="overflow:auto"><table><thead><tr><th>Produto</th><th>Contado</th><th>Sistema</th><th>Diferença</th><th>Status</th><th>Ações</th></tr></thead><tbody>'+rows.map(r=>{const d=r.diff;const status=d===null?'<span class="badge">Sem estoque</span>':d===0?'<span class="ok">✓ Conferido</span>':d>0?'<span class="warn">▲ Sobra</span>':'<span style="color:#b42318;font-weight:700">▼ Falta</span>';return '<tr><td><b>'+escapeHtml(r.p.name||'Não cadastrado')+'</b><br><span class="muted">'+escapeHtml(r.c)+'</span></td><td>'+r.counted+'</td><td>'+(r.stock===null?'—':r.stock)+'</td><td>'+(d===null?'—':(d>0?'+':'')+d)+'</td><td>'+status+'</td><td style="white-space:nowrap"><button class="secondary" data-result-edit="'+escapeHtml(r.c)+'" aria-label="Alterar quantidade">✏️</button> <button class="danger" data-result-delete="'+escapeHtml(r.c)+'" aria-label="Excluir da conferência">🗑️</button></td></tr>';}).join('')+'</tbody></table></div>':'<div class="empty">Nenhum item encontrado para esse filtro.</div>';document.querySelectorAll('[data-result-edit]').forEach(b=>b.onclick=()=>{const code=b.getAttribute('data-result-edit'),current=Number(db.counts[code]||0),value=prompt('Informe a quantidade correta:',String(current));if(value!==null)setCount(code,value)});document.querySelectorAll('[data-result-delete]').forEach(b=>b.onclick=()=>removeCountItem(b.getAttribute('data-result-delete')));}
 document.getElementById('exportCSV').onclick=()=>{let out='Codigo,Descricao,QuantidadeContada,EstoqueSistema,Diferenca,Status,CodigoAlterdata,Unidade\n';for(const r of resultRows()){const status=r.diff===null?'Sem estoque':r.diff===0?'Conferido':r.diff>0?'Sobra':'Falta';out+=[r.c,r.p.name||'',r.counted,r.stock===null?'':r.stock,r.diff===null?'':r.diff,status,r.p.altCode||'',r.p.unit||'UN'].map(x=>'\"'+String(x).replace(/\"/g,'\"\"')+'\"').join(',')+'\n'}download('conferencia_estoque.csv',out,'text/csv')};
 document.getElementById('resultSearch').addEventListener('input',renderResult);document.getElementById('resultFilter').addEventListener('change',renderResult);
 document.getElementById('exportAlter').onclick=()=>{let out='';for(const c of Object.keys(db.counts)){let p=product(c)||{};out+=String(p.altCode||c).padEnd(20,' ')+String(db.counts[c]).padStart(10,' ')+'\\r\\n'}download('inventario_alterdata_rascunho.txt',out)};
@@ -416,7 +434,7 @@ window.addEventListener('pagehide',()=>{if(running)stopScanner('');});
 window.addEventListener('online',()=>{updateNetStatus();if(cloudUser){setCloudMsg('Internet voltou. Sincronizando automaticamente...');syncCloud();}});
 window.addEventListener('offline',()=>{markPending(true);setCloudMsg('Sem internet. Modo offline ativo: a contagem continua normalmente.');});
 updateNetStatus();
-if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js?v=14-atualizado-3').catch(()=>{});}
+if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js?v=14-atualizado-5').catch(()=>{});}
 refresh();
 </script>
 </body></html>
