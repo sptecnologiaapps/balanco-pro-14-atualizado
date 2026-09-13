@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<title>Estoque • Balanço PRO 14 Atualizado</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f7f8;color:#17323a}
+header{background:#0f766e;color:#fff;padding:16px 18px;position:sticky;top:0;z-index:5}
+header h1{margin:0;font-size:20px} header small{opacity:.85}
+nav{display:flex;gap:6px;overflow:auto;background:#fff;padding:8px;position:sticky;top:69px;z-index:4;box-shadow:0 2px 8px #0001}
+nav button{border:0;background:#e8f3f1;padding:10px 12px;border-radius:10px;white-space:nowrap}
+nav button.active{background:#0f766e;color:white}
+main{max-width:1000px;margin:auto;padding:14px}
+.card{background:white;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 2px 12px #0000000c}
+h2{margin:0 0 12px;font-size:18px}h3{margin:14px 0 8px;font-size:15px}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1;min-width:150px}
+input,select{width:100%;padding:12px;border:1px solid #ccd8db;border-radius:10px;font-size:16px}
+button{cursor:pointer}.primary{background:#0f766e;color:white;border:0;padding:12px 15px;border-radius:10px;font-weight:700}
+.secondary{background:#eef3f4;border:0;padding:12px 15px;border-radius:10px}
+.danger{background:#b42318;color:white;border:0;padding:10px 12px;border-radius:10px}
+.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat div{background:#eef8f6;border-radius:12px;padding:14px}.stat b{display:block;font-size:24px}
+#video{width:100%;max-height:48vh;object-fit:cover;border-radius:14px;background:#111}
+.hidden{display:none!important}.muted{color:#63777d;font-size:13px}.ok{color:#087443;font-weight:700}.warn{color:#a15c00;font-weight:700}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:9px;border-bottom:1px solid #e5eaeb;text-align:left}th{background:#f5f8f8}
+.badge{padding:4px 7px;border-radius:999px;background:#eef3f4}.empty{padding:20px;text-align:center;color:#687b80}
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#17323a;color:#fff;padding:11px 16px;border-radius:12px;display:none;z-index:20}
+</style>
+<style>
+#cloudBox{border:1px solid #cfe4e1;background:#f5fbfa}
+.cloudStatus{font-weight:700}
+</style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="./zxing.min.js"></script>
+</head>
+<body>
+<header><h1>📦 Estoque • Balanço PRO</h1><small>Leitura contínua inteligente • funciona online e offline • PRO 14 Atualizado</small></header>
+<nav>
+<button data-page="balanco" class="active">📷 Balanço</button>
+<button data-page="produtos">📦 Produtos</button>
+<button data-page="importar">↥ Importar</button>
+<button data-page="resultado">📊 Resultado</button>
+</nav>
+<main>
+<section id="balanco" class="page">
+<div class="card">
+<h2>Fazer balanço</h2>
+<div class="stat">
+<div><span class="muted">Produtos lidos</span><b id="sProdutos">0</b></div>
+<div><span class="muted">Itens contados</span><b id="sItens">0</b></div>
+<div><span class="muted">Diferenças</span><b id="sDif">0</b></div>
+</div>
+</div>
+<div class="card">
+<h2>📷 Leitor</h2>
+<video id="video" playsinline muted class="hidden"></video>
+<div class="row" style="margin-top:10px">
+<button class="primary" id="start">Iniciar leitor</button>
+<button class="secondary" id="stop">Parar</button>
+</div>
+<p class="muted">No celular, a câmera tenta reconhecer EAN/UPC/Code 128. Se o navegador não suportar leitura, use a digitação abaixo.</p>
+<div class="row">
+<input id="manualCode" inputmode="text" autocomplete="off" placeholder="🔎 Digite nome, EAN ou código interno">
+<button class="primary" id="readManual">🔎 Pesquisar</button> <button class="secondary" id="manualRegister">📦 Cadastrar código</button>
+</div>
+<div id="searchResults" class="hidden" style="margin-top:10px"></div>
+<div id="current" class="card hidden" style="margin-top:12px;background:#f2fbf9"></div>
+</div>
+<div class="card">
+<h2>Últimas leituras</h2><div id="recent"></div>
+</div>
+</section>
+
+<section id="produtos" class="page hidden">
+<div class="card">
+<h2>➕ Cadastrar / alterar produto</h2>
+<div class="row"><input id="pCode" placeholder="Código/EAN"><input id="pName" placeholder="Descrição do produto"></div>
+<div class="row" style="margin-top:8px"><input id="pAlt" placeholder="Código principal Alterdata (opcional)"><input id="pUnit" placeholder="Unidade (UN, KG, CX...)"></div>
+<button class="primary" style="margin-top:10px" id="saveProduct">Salvar produto</button> <button class="secondary" style="margin-top:10px" id="cancelEdit">Cancelar alteração</button>
+<p class="muted">Para produto sem código de barras, você pode criar um código interno e usar esse código nas próximas contagens.</p>
+</div>
+<div class="card"><h2>Produtos cadastrados</h2><div class="row" style="margin-bottom:10px"><input id="productSearch" placeholder="🔎 Procurar produto pelo nome ou código"></div><div id="productTable"></div></div>
+</section>
+
+<section id="importar" class="page hidden">
+<div class="card">
+<h2>↥ Importar arquivo do Alterdata</h2>
+<p>Esta primeira versão lê o padrão observado no arquivo enviado: <b>6 dígitos no início da linha</b> e a descrição no restante do registro.</p>
+<input type="file" id="txtFile" accept=".txt">
+<div id="importMsg" class="muted" style="margin-top:10px"></div>
+</div>
+<div class="card" id="cloudBox">
+<h2>☁️ Sincronização na nuvem</h2>
+<p class="muted">Use a mesma conta Firebase no celular e no computador para manter o estoque sincronizado.</p>
+<div id="cloudLogin">
+<div class="row"><input id="cloudEmail" type="email" autocomplete="username" placeholder="E-mail da conta Firebase"><input id="cloudPassword" type="password" autocomplete="current-password" placeholder="Senha"></div>
+<button class="primary" id="cloudLoginBtn" style="margin-top:8px">🔐 Entrar e sincronizar</button>
+</div>
+<div id="cloudLogged" class="hidden">
+<div>Conta: <span id="cloudUser" class="cloudStatus"></span></div>
+<button class="primary" id="cloudSyncBtn" style="margin-top:8px">☁️ Sincronizar agora</button>
+<button class="secondary" id="cloudLogoutBtn" style="margin-top:8px">Sair da conta</button>
+</div>
+<div id="cloudMsg" class="muted" style="margin-top:10px"></div>
+</div>
+<div class="card">
+<h2>🔄 Dados</h2>
+<button class="secondary" id="exportBackup">Exportar backup JSON</button>
+<button class="secondary" id="importBackupBtn">Importar backup JSON</button>
+<input type="file" id="backupFile" accept=".json" class="hidden">
+<button class="danger" id="clearAll" style="margin-top:10px">Apagar dados deste navegador</button>
+<p class="muted">Os dados ficam salvos neste aparelho mesmo sem internet. Quando Wi‑Fi ou internet móvel voltar, a sincronização tenta atualizar a nuvem automaticamente. Em caso de conflito, uma cópia de segurança local é preservada antes de carregar dados mais recentes.</p>
+</div>
+</section>
+
+<section id="resultado" class="page hidden">
+<div class="card">
+<h2>📊 Conferência do balanço</h2>
+<div class="stat" style="grid-template-columns:repeat(4,1fr)">
+<div><span class="muted">Produtos contados</span><b id="rProdutos">0</b></div>
+<div><span class="muted">Itens contados</span><b id="rItens">0</b></div>
+<div><span class="muted">Com diferença</span><b id="rDif">0</b></div>
+<div><span class="muted">Sem diferença</span><b id="rOk">0</b></div>
+</div>
+<div class="row" style="margin-top:12px"><input id="resultSearch" placeholder="🔎 Procurar produto no resultado"><select id="resultFilter"><option value="todos">Todos</option><option value="dif">Somente com diferença</option><option value="ok">Somente sem diferença</option><option value="mais">Contado acima do sistema</option><option value="menos">Contado abaixo do sistema</option><option value="semestoque">Sem estoque informado</option></select></div>
+<div class="row" style="margin-top:10px"><button class="primary" id="exportCSV">⬇️ Exportar contagem CSV</button><button class="secondary" id="exportAlter">📄 Gerar integração (rascunho)</button></div>
+<p class="muted">A conferência mostra claramente o que foi contado e onde existe diferença. O arquivo específico de importação do Inventário Alterdata será fechado depois de validarmos o layout completo do TXT.</p>
+<div id="resultTable"></div>
+</div>
+</section>
+</main>
+<div id="toast"></div>
+<div id="netStatus" style="position:fixed;right:10px;bottom:10px;z-index:19;padding:8px 11px;border-radius:999px;background:#eef8f6;font-size:12px;font-weight:700">● Online</div>
+<script>
+const KEY='estoque_app_v1';
+let db=JSON.parse(localStorage.getItem(KEY)||'{"products":{},"counts":{},"history":[]}');
+let localUpdatedAt=Number(localStorage.getItem(KEY+'_updatedAt')||Date.now());
+let cloudSaveTimer=null;
+let offlinePending=localStorage.getItem(KEY+'_pending')==='1';
+function markPending(v=true){offlinePending=v;localStorage.setItem(KEY+'_pending',v?'1':'0');updateNetStatus();}
+function localSafetyBackup(){try{localStorage.setItem(KEY+'_safety',JSON.stringify(db));localStorage.setItem(KEY+'_safetyAt',String(Date.now()));}catch(e){}}
+function updateNetStatus(){const el=document.getElementById('netStatus');if(!el)return; if(navigator.onLine){el.textContent=offlinePending?'● Online • aguardando sincronização':'● Online';el.style.background=offlinePending?'#fff3cd':'#eef8f6';}else{el.textContent='● Sem internet • modo offline';el.style.background='#fff3cd';}}
+function save(){localUpdatedAt=Date.now();localStorage.setItem(KEY,JSON.stringify(db));localStorage.setItem(KEY+'_updatedAt',String(localUpdatedAt));markPending(true);refresh();if(cloudUser&&navigator.onLine){clearTimeout(cloudSaveTimer);cloudSaveTimer=setTimeout(()=>safeCloudSave(),1200);}}
+async function safeCloudSave(){
+ if(!cloudUser)return;
+ try{
+  setCloudMsg('Verificando alterações na nuvem...');
+  const ref=cloudDb.ref(cloudPath());
+  const result=await ref.transaction(current=>{
+   if(current && Number(current.updatedAt||0)>localUpdatedAt) return;
+   return cloudPayload();
+  });
+  if(result.committed){markPending(false);setCloudMsg('Sincronizado automaticamente.');}
+  else{
+   const cloud=result.snapshot.val();
+   if(cloud && cloud.db){localSafetyBackup();db=cloud.db;localUpdatedAt=Number(cloud.updatedAt||Date.now());localStorage.setItem(KEY,JSON.stringify(db));localStorage.setItem(KEY+'_updatedAt',String(localUpdatedAt));markPending(false);refresh();setCloudMsg('Alteração mais recente da nuvem carregada neste aparelho.');}
+  }
+ }catch(e){setCloudMsg('Não foi possível sincronizar automaticamente.');}
+}
+function setCloudMsg(t){const x=document.getElementById('cloudMsg');if(x)x.textContent=t;}
+const firebaseConfig={apiKey:"AIzaSyAbCOFiEA14etcitMW7dmt1ITFZIDH25uc",authDomain:"balanco-pro.firebaseapp.com",databaseURL:"https://balanco-pro-default-rtdb.firebaseio.com",projectId:"balanco-pro",storageBucket:"balanco-pro.firebasestorage.app",messagingSenderId:"361011755703",appId:"1:361011755703:web:8e408505ab58ef3398eb32"};
+let cloudUser=null;
+try{firebase.initializeApp(firebaseConfig);}catch(e){}
+const auth=firebase.auth(); const cloudDb=firebase.database();
+function cloudPath(){return 'estoque/'+cloudUser.uid;}
+function cloudPayload(){return {db,updatedAt:localUpdatedAt};}
+async function syncCloud(){
+ if(!cloudUser)return setCloudMsg('Entre na conta Firebase primeiro.');
+ setCloudMsg('Sincronizando...');
+ try{
+  const snap=await cloudDb.ref(cloudPath()).once('value');
+  const cloud=snap.val();
+  if(!cloud){await cloudDb.ref(cloudPath()).set(cloudPayload());markPending(false);setCloudMsg('Nuvem inicializada com os dados deste aparelho.');return;}
+  const cloudTime=Number(cloud.updatedAt||0);
+  if(cloudTime>localUpdatedAt && cloud.db){
+    localSafetyBackup();db=cloud.db;localUpdatedAt=cloudTime;localStorage.setItem(KEY,JSON.stringify(db));localStorage.setItem(KEY+'_updatedAt',String(localUpdatedAt));markPending(false);refresh();setCloudMsg('Dados mais recentes da nuvem carregados neste aparelho.');
+  }else{
+    const result=await cloudDb.ref(cloudPath()).transaction(current=>{
+      if(current && Number(current.updatedAt||0)>localUpdatedAt) return;
+      return cloudPayload();
+    });
+    if(result.committed){markPending(false);setCloudMsg('Dados deste aparelho enviados para a nuvem.');}
+    else{
+      const latest=result.snapshot.val();
+      if(latest && latest.db){localSafetyBackup();db=latest.db;localUpdatedAt=Number(latest.updatedAt||Date.now());localStorage.setItem(KEY,JSON.stringify(db));localStorage.setItem(KEY+'_updatedAt',String(localUpdatedAt));markPending(false);refresh();setCloudMsg('A nuvem tinha dados mais recentes; eles foram carregados neste aparelho.');}
+    }
+  }
+ }catch(e){markPending(true);setCloudMsg('Sem conexão no momento. Os dados continuam salvos neste aparelho e serão sincronizados quando a internet voltar.');}
+}
+auth.onAuthStateChanged(user=>{cloudUser=user||null;const login=document.getElementById('cloudLogin'),logged=document.getElementById('cloudLogged'),u=document.getElementById('cloudUser');if(user){login.classList.add('hidden');logged.classList.remove('hidden');u.textContent=user.email||'conta autenticada';setCloudMsg('Conta conectada.');syncCloud();}else{login.classList.remove('hidden');logged.classList.add('hidden');}});
+
+function toast(t){const x=document.getElementById('toast');x.textContent=t;x.style.display='block';setTimeout(()=>x.style.display='none',1800)}
+function product(code){return db.products[String(code)]}
+function findProducts(query){
+ query=String(query||'').trim().toLowerCase(); if(!query)return [];
+ return Object.values(db.products).filter(p=>String(p.code||'').toLowerCase()===query || String(p.altCode||'').toLowerCase()===query || String(p.name||'').toLowerCase().includes(query)).slice(0,12);
+}
+function findProduct(query){return findProducts(query)[0]||null}
+function ensureProduct(code){
+ code=String(code).trim(); if(!code)return null;
+ if(!db.products[code]) db.products[code]={code,name:'Produto não cadastrado',altCode:'',unit:'UN'};
+ return db.products[code];
+}
+function addCount(code, resolvedProduct=null){
+ code=String(code).trim(); if(!code)return;
+ const p=resolvedProduct || findProduct(code);
+ const key=p ? p.code : code;
+ const display=p || ensureProduct(code);
+ db.counts[key]=(db.counts[key]||0)+1;
+ db.history.unshift({code:key,time:new Date().toLocaleString('pt-BR')});
+ db.history=db.history.slice(0,50);
+ save(); showCurrent(display,db.counts[key]); toast('Leitura registrada: +1');
+}
+function setCount(code,value){
+ const n=Math.max(0,Math.floor(Number(value))); if(!Number.isFinite(n))return;
+ if(n===0) delete db.counts[code]; else db.counts[code]=n;
+ save(); const p=product(code); if(p) showCurrent(p,n); toast('Quantidade corrigida');
+}
+function showCurrent(p,q){
+ const c=document.getElementById('current');c.classList.remove('hidden');
+ const unknown = !db.products[p.code] || p.name==='Produto não cadastrado';
+ c.innerHTML='<b style="font-size:18px">'+escapeHtml(p.name)+'</b><br><span class="muted">Código: '+escapeHtml(p.code)+'</span>'+
+ '<div style="font-size:32px;font-weight:800;margin:8px 0">'+q+' <span style="font-size:14px;font-weight:400">unidade(s)</span></div>'+
+ '<div class="row"><button class="secondary" id="minusQty">➖ 1</button><button class="primary" id="plusQty">➕ 1</button></div>'+
+ '<div class="row" style="margin-top:8px"><input id="editQty" type="number" min="0" step="1" value="'+q+'"><button class="secondary" id="saveQty">✏️ Corrigir quantidade</button></div>'+
+ (unknown?'<div style="margin-top:12px;padding:12px;border:1px solid #f0c36a;border-radius:12px;background:#fff9e8">'+
+ '<b>⚠️ Produto ainda não cadastrado</b><p class="muted" style="margin:6px 0 10px">A contagem já foi registrada. Cadastre agora sem perder a quantidade.</p>'+
+ '<div class="row"><input id="quickName" placeholder="Nome do produto"><input id="quickAlt" placeholder="Código Alterdata (opcional)"></div>'+
+ '<button class="primary" id="quickSave" style="margin-top:8px">📦 Cadastrar este produto</button></div>':'');
+ document.getElementById('minusQty').onclick=()=>setCount(p.code,Math.max(0,(db.counts[p.code]||0)-1));
+ document.getElementById('plusQty').onclick=()=>addCount(p.code,p);
+ document.getElementById('saveQty').onclick=()=>setCount(p.code,document.getElementById('editQty').value);
+ if(unknown){
+   document.getElementById('quickSave').onclick=()=>{
+     const name=document.getElementById('quickName').value.trim();
+     if(!name)return toast('Informe o nome do produto');
+     db.products[p.code]={code:p.code,name,altCode:document.getElementById('quickAlt').value.trim(),unit:'UN'};
+     save(); showCurrent(db.products[p.code],db.counts[p.code]||0); toast('Produto cadastrado sem perder a contagem');
+   };
+ }
+}
+function openRegistration(code){
+ const q=String(code||'').trim();
+ const box=document.getElementById('searchResults');
+ if(!q){toast('Digite um código ou nome primeiro');return;}
+ box.classList.remove('hidden');
+ box.innerHTML='<div style="padding:14px;border:1px solid #f0c36a;border-radius:12px;background:#fff9e8">'+
+ '<b style="font-size:17px">📦 Cadastrar novo produto</b>'+
+ '<p class="muted" style="margin:6px 0 10px">O código pesquisado será mantido: <b>'+escapeHtml(q)+'</b></p>'+
+ '<input id="regName" placeholder="Nome / descrição do produto" autocomplete="off">'+
+ '<div class="row" style="margin-top:8px"><input id="regAlt" placeholder="Código Alterdata (opcional)"><input id="regUnit" placeholder="Unidade" value="UN"></div>'+
+ '<div class="row" style="margin-top:8px"><button class="primary" id="saveMissing">💾 Salvar produto</button><button class="secondary" id="cancelMissing">Cancelar</button></div>'+
+ '</div>';
+ document.getElementById('regName').focus();
+ document.getElementById('cancelMissing').onclick=()=>{box.classList.add('hidden');box.innerHTML='';};
+ document.getElementById('saveMissing').onclick=()=>{
+   const name=document.getElementById('regName').value.trim();
+   if(!name){toast('Informe o nome do produto');document.getElementById('regName').focus();return;}
+   const existing=db.products[q];
+   db.products[q]={...(existing||{}),code:q,name,altCode:document.getElementById('regAlt').value.trim(),unit:document.getElementById('regUnit').value.trim()||'UN'};
+   save();
+   const qty=db.counts[q]||0;
+   showCurrent(db.products[q],qty);
+   box.classList.add('hidden');box.innerHTML='';document.getElementById('manualCode').value='';
+   toast(existing?'Produto atualizado':'Produto cadastrado');
+   renderProductTable(document.getElementById('productSearch')?.value||'');
+ };
+}
+function renderSearchResults(results){
+ const box=document.getElementById('searchResults');
+ if(!results.length){
+   const q=document.getElementById('manualCode').value.trim();
+   openRegistration(q);
+   return;
+ }
+ box.classList.remove('hidden');
+ box.innerHTML=results.map((p,i)=>'<button class="secondary" data-search-code="'+escapeHtml(p.code)+'" style="display:block;width:100%;text-align:left;margin-bottom:6px"><b>'+escapeHtml(p.name)+'</b><br><span class="muted">Código: '+escapeHtml(p.code)+' • Alterdata: '+escapeHtml(p.altCode||'—')+'</span></button>').join('');
+ box.querySelectorAll('[data-search-code]').forEach(b=>b.onclick=()=>{const p=product(b.getAttribute('data-search-code')); showCurrent(p,db.counts[p.code]||0); box.classList.add('hidden'); document.getElementById('manualCode').value='';});
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function renderProductTable(filter=''){
+  const q=String(filter||'').trim().toLowerCase();
+  const arr=Object.values(db.products).filter(p=>!q || String(p.name||'').toLowerCase().includes(q) || String(p.code||'').toLowerCase().includes(q) || String(p.altCode||'').toLowerCase().includes(q));
+  document.getElementById('productTable').innerHTML=arr.map(p=>'<div style="padding:10px 0;border-bottom:1px solid #eee"><b>'+escapeHtml(p.name)+'</b><br><span class="muted">Código: '+escapeHtml(p.code)+' • Alterdata: '+escapeHtml(p.altCode||'—')+' • '+escapeHtml(p.unit||'—')+'</span><div class="row" style="margin-top:7px"><button class="secondary" data-edit-code="'+escapeHtml(p.code)+'">✏️ Alterar</button><button class="danger" data-delete-code="'+escapeHtml(p.code)+'">🗑️ Excluir</button></div></div>').join('')||'<div class="empty">Nenhum produto encontrado.</div>';
+  document.querySelectorAll('[data-edit-code]').forEach(b=>b.onclick=()=>editProduct(b.getAttribute('data-edit-code')));
+  document.querySelectorAll('[data-delete-code]').forEach(b=>b.onclick=()=>deleteProduct(b.getAttribute('data-delete-code')));
+}
+function editProduct(code){
+  const p=product(code); if(!p)return;
+  document.getElementById('pCode').value=p.code; document.getElementById('pName').value=p.name||''; document.getElementById('pAlt').value=p.altCode||''; document.getElementById('pUnit').value=p.unit||'UN';
+  document.getElementById('saveProduct').textContent='Salvar alteração'; document.getElementById('saveProduct').dataset.editing=code; window.scrollTo({top:0,behavior:'smooth'}); toast('Produto carregado para alteração');
+}
+function deleteProduct(code){
+  const p=product(code); if(!p)return;
+  if(!confirm('Excluir o cadastro de '+p.name+'? A contagem já registrada será mantida.'))return;
+  delete db.products[code]; save(); toast('Produto excluído');
+}
+function refresh(){
+ let codes=Object.keys(db.counts);
+ document.getElementById('sProdutos').textContent=codes.length;
+ document.getElementById('sItens').textContent=codes.reduce((a,c)=>a+db.counts[c],0);
+ let dif=codes.filter(c=>product(c)&&product(c).stock!=null&&db.counts[c]!==Number(product(c).stock)).length;
+ document.getElementById('sDif').textContent=dif;
+ document.getElementById('recent').innerHTML=db.history.slice(0,12).map(h=>'<div style="padding:8px 0;border-bottom:1px solid #eee"><b>'+escapeHtml(product(h.code)?.name||'Produto')+'</b> • '+escapeHtml(h.code)+' • +1 <span class="muted">'+h.time+'</span></div>').join('')||'<div class="empty">Nenhuma leitura ainda.</div>';
+ renderProductTable(document.getElementById('productSearch')?.value||'');
+ renderResult();
+}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelectorAll('.page').forEach(x=>x.classList.add('hidden'));document.getElementById(b.dataset.page).classList.remove('hidden');refresh();});
+document.getElementById('readManual').onclick=()=>{let x=document.getElementById('manualCode');let results=findProducts(x.value);renderSearchResults(results);x.focus()};
+document.getElementById('manualRegister').onclick=()=>openRegistration(document.getElementById('manualCode').value);
+document.getElementById('manualCode').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('readManual').click()});
+document.getElementById('saveProduct').onclick=()=>{let old=document.getElementById('saveProduct').dataset.editing||'';let c=document.getElementById('pCode').value.trim(),n=document.getElementById('pName').value.trim();if(!c||!n)return toast('Informe código e descrição');if(old && old!==c && db.products[old]){db.products[c]={...db.products[old],code:c};delete db.products[old];if(db.counts[old]!=null){db.counts[c]=db.counts[old];delete db.counts[old];}}else{db.products[c]={...(db.products[c]||{}),code:c,name:n,altCode:document.getElementById('pAlt').value.trim(),unit:document.getElementById('pUnit').value.trim()||'UN'};} db.products[c].name=n;db.products[c].altCode=document.getElementById('pAlt').value.trim();db.products[c].unit=document.getElementById('pUnit').value.trim()||'UN';delete document.getElementById('saveProduct').dataset.editing;document.getElementById('saveProduct').textContent='Salvar produto';save();['pCode','pName','pAlt','pUnit'].forEach(id=>document.getElementById(id).value='');toast(old?'Produto alterado':'Produto salvo')};
+document.getElementById('productSearch').addEventListener('input',e=>renderProductTable(e.target.value));
+document.getElementById('cancelEdit').onclick=()=>{delete document.getElementById('saveProduct').dataset.editing;document.getElementById('saveProduct').textContent='Salvar produto';['pCode','pName','pAlt','pUnit'].forEach(id=>document.getElementById(id).value='');toast('Alteração cancelada')};
+document.getElementById('txtFile').onchange=e=>{let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{let lines=String(r.result).split(/\r?\n/),n=0;for(const line of lines){if(!line.trim())continue;let m=line.match(/^(\d{6})/);if(m){let code=m[1], desc=line.slice(18).trim()||line.slice(6).trim(); if(!db.products[code]){db.products[code]={code,name:desc,altCode:'',unit:'UN'};n++}}}save();document.getElementById('importMsg').textContent=n+' produto(s) importado(s) ou incluído(s).';toast('Importação concluída')};r.readAsText(f,'UTF-8')};
+function download(name,text,type='text/plain'){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
+function resultRows(){const q=String(document.getElementById('resultSearch')?.value||'').trim().toLowerCase();const f=document.getElementById('resultFilter')?.value||'todos';return Object.keys(db.counts).map(c=>{const p=product(c)||{};const counted=Number(db.counts[c]||0);const stock=p.stock==null?null:Number(p.stock);const diff=stock==null?null:counted-stock;return{c,p,counted,stock,diff};}).filter(r=>{const text=(r.c+' '+(r.p.name||'')+' '+(r.p.altCode||'')).toLowerCase();if(q&&!text.includes(q))return false;if(f==='dif'&&!(r.diff!==null&&r.diff!==0))return false;if(f==='ok'&&r.diff!==0)return false;if(f==='mais'&&!(r.diff!==null&&r.diff>0))return false;if(f==='menos'&&!(r.diff!==null&&r.diff<0))return false;if(f==='semestoque'&&r.stock!==null)return false;return true;});}
+function renderResult(){const all=Object.keys(db.counts);const itens=all.reduce((a,c)=>a+Number(db.counts[c]||0),0);let dif=0,ok=0;all.forEach(c=>{const p=product(c);if(p&&p.stock!=null){if(Number(db.counts[c])!==Number(p.stock))dif++;else ok++;}});document.getElementById('rProdutos').textContent=all.length;document.getElementById('rItens').textContent=itens;document.getElementById('rDif').textContent=dif;document.getElementById('rOk').textContent=ok;const rows=resultRows();document.getElementById('resultTable').innerHTML=rows.length?'<div style="overflow:auto"><table><thead><tr><th>Produto</th><th>Contado</th><th>Sistema</th><th>Diferença</th><th>Status</th></tr></thead><tbody>'+rows.map(r=>{const d=r.diff;const status=d===null?'<span class="badge">Sem estoque</span>':d===0?'<span class="ok">✓ Conferido</span>':d>0?'<span class="warn">▲ Sobra</span>':'<span style="color:#b42318;font-weight:700">▼ Falta</span>';return '<tr><td><b>'+escapeHtml(r.p.name||'Não cadastrado')+'</b><br><span class="muted">'+escapeHtml(r.c)+'</span></td><td>'+r.counted+'</td><td>'+(r.stock===null?'—':r.stock)+'</td><td>'+(d===null?'—':(d>0?'+':'')+d)+'</td><td>'+status+'</td></tr>';}).join('')+'</tbody></table></div>':'<div class="empty">Nenhum item encontrado para esse filtro.</div>';}
+document.getElementById('exportCSV').onclick=()=>{let out='Codigo,Descricao,QuantidadeContada,EstoqueSistema,Diferenca,Status,CodigoAlterdata,Unidade\n';for(const r of resultRows()){const status=r.diff===null?'Sem estoque':r.diff===0?'Conferido':r.diff>0?'Sobra':'Falta';out+=[r.c,r.p.name||'',r.counted,r.stock===null?'':r.stock,r.diff===null?'':r.diff,status,r.p.altCode||'',r.p.unit||'UN'].map(x=>'\"'+String(x).replace(/\"/g,'\"\"')+'\"').join(',')+'\n'}download('conferencia_estoque.csv',out,'text/csv')};
+document.getElementById('resultSearch').addEventListener('input',renderResult);document.getElementById('resultFilter').addEventListener('change',renderResult);
+document.getElementById('exportAlter').onclick=()=>{let out='';for(const c of Object.keys(db.counts)){let p=product(c)||{};out+=String(p.altCode||c).padEnd(20,' ')+String(db.counts[c]).padStart(10,' ')+'\\r\\n'}download('inventario_alterdata_rascunho.txt',out)};
+document.getElementById('exportBackup').onclick=()=>download('estoque_app_backup.json',JSON.stringify(db,null,2),'application/json');
+document.getElementById('importBackupBtn').onclick=()=>document.getElementById('backupFile').click();
+document.getElementById('backupFile').onchange=e=>{let f=e.target.files[0],r=new FileReader();r.onload=()=>{try{const x=JSON.parse(r.result);if(!x||typeof x!=='object'||!x.products||!x.counts||!x.history)throw new Error('formato');db=x;save();toast('Backup restaurado')}catch{toast('Backup inválido')}};r.readAsText(f)};
+document.getElementById('clearAll').onclick=()=>{if(confirm('Apagar todos os produtos e contagens deste navegador?')){db={products:{},counts:{},history:[]};save();toast('Dados apagados')}};
+function authErrorMessage(e){
+ const code=String(e?.code||'');
+ if(code==='auth/invalid-credential'||code==='auth/wrong-password'||code==='auth/user-not-found')return 'E-mail ou senha incorretos.';
+ if(code==='auth/invalid-email')return 'O e-mail informado não é válido.';
+ if(code==='auth/too-many-requests')return 'Muitas tentativas. Aguarde alguns minutos e tente novamente.';
+ if(code==='auth/network-request-failed')return 'Falha de internet. Confira a conexão e tente novamente.';
+ if(code==='auth/unauthorized-domain')return 'Este endereço do aplicativo ainda não foi autorizado no Firebase.';
+ if(code==='auth/operation-not-allowed')return 'O acesso por e-mail precisa ser ativado no Firebase.';
+ return 'Não foi possível entrar. Tente novamente.';
+}
+document.getElementById('cloudLoginBtn').onclick=async()=>{
+ const email=document.getElementById('cloudEmail').value.trim(),pass=document.getElementById('cloudPassword').value,btn=document.getElementById('cloudLoginBtn');
+ if(!email||!pass)return setCloudMsg('Informe e-mail e senha.');
+ btn.disabled=true;btn.textContent='⏳ Entrando...';setCloudMsg('Conectando com segurança...');
+ let timeout;
+ try{
+  await Promise.race([
+   auth.signInWithEmailAndPassword(email,pass),
+   new Promise((_,reject)=>{timeout=setTimeout(()=>reject({code:'auth/login-timeout'}),15000);})
+  ]);
+  setCloudMsg('Acesso confirmado. Sincronizando...');
+ }catch(e){
+  setCloudMsg(e?.code==='auth/login-timeout'?'A conexão demorou demais. Confira a internet e tente novamente.':authErrorMessage(e));
+ }finally{
+  clearTimeout(timeout);btn.disabled=false;btn.textContent='🔐 Entrar e sincronizar';
+ }
+};
+document.getElementById('cloudSyncBtn').onclick=syncCloud;
+document.getElementById('cloudLogoutBtn').onclick=()=>auth.signOut();
+
+let stream=null,detector=null,zxingReader=null,running=false,lastCode='',lastAt=0,scanBusy=false;
+function scanBeep(){try{const C=window.AudioContext||window.webkitAudioContext;if(!C)return;const a=new C(),o=a.createOscillator(),g=a.createGain();o.frequency.value=880;g.gain.value=.08;o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+.09);setTimeout(()=>a.close(),180);}catch(e){}}
+function registerScannedCode(value){const c=String(value||'').trim(),now=Date.now();if(!c)return;if(c!==lastCode||now-lastAt>=1500){lastCode=c;lastAt=now;scanBeep();addCount(c);}}
+async function stopScanner(message='Leitura parada.'){
+ running=false; scanBusy=false;
+ if(zxingReader){try{zxingReader.reset()}catch(e){}zxingReader=null}
+ if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+ const v=document.getElementById('video');
+ try{v.pause()}catch(e){}
+ v.srcObject=null;v.classList.add('hidden');lastCode='';lastAt=0;
+ if(message) toast(message);
+}
+document.getElementById('start').onclick=async()=>{
+ if(running)return toast('O leitor já está ativo.');
+ if(!window.isSecureContext)return toast('Abra pelo endereço HTTPS oficial do aplicativo.');
+ if(!navigator.mediaDevices?.getUserMedia)return toast('Câmera não disponível neste navegador.');
+ try{
+  const v=document.getElementById('video');v.classList.remove('hidden');
+  running=true;lastCode='';lastAt=0;
+  if('BarcodeDetector' in window){
+   detector=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','itf']});
+   stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}});
+   v.srcObject=stream;await v.play();toast('Leitor iniciado. Aponte para o código.');requestAnimationFrame(scan);
+  }else if(window.ZXing?.BrowserMultiFormatReader){
+   zxingReader=new ZXing.BrowserMultiFormatReader();
+   toast('Leitor compatível iniciado. Aponte para o código.');
+   Promise.resolve(zxingReader.decodeFromVideoDevice(undefined,v,(result)=>{if(running&&result)registerScannedCode(result.getText());})).catch(e=>stopScanner('Não foi possível abrir a câmera: '+(e.message||'permissão negada')));
+  }else{
+   await stopScanner('Leitor de código indisponível. Use a pesquisa por nome ou código.');
+  }
+ }catch(e){await stopScanner('Não foi possível abrir a câmera: '+(e.message||'permissão negada'));}
+};
+async function scan(){
+ if(!running)return;
+ const v=document.getElementById('video');
+ if(!scanBusy && v.readyState>=2){
+  scanBusy=true;
+  try{
+   const a=await detector.detect(v);
+   if(running&&a.length){
+    const c=String(a[0].rawValue||'').trim();const now=Date.now();
+    // Mesmo código precisa ficar fora do quadro por 1500 ms antes de contar de novo.
+    if(c&&(!(c===lastCode)||now-lastAt>=1500))registerScannedCode(c);
+   }
+  }catch(e){} finally{scanBusy=false;}
+ }
+ if(running)requestAnimationFrame(scan);
+}
+document.getElementById('stop').onclick=()=>stopScanner('Contagem parada.');
+window.addEventListener('pagehide',()=>{if(running)stopScanner('');});
+window.addEventListener('online',()=>{updateNetStatus();if(cloudUser){setCloudMsg('Internet voltou. Sincronizando automaticamente...');syncCloud();}});
+window.addEventListener('offline',()=>{markPending(true);setCloudMsg('Sem internet. Modo offline ativo: a contagem continua normalmente.');});
+updateNetStatus();
+if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js?v=14-atualizado-3').catch(()=>{});}
+refresh();
+</script>
+</body></html>
