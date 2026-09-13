@@ -27,6 +27,7 @@ button{cursor:pointer}.primary{background:#0f766e;color:white;border:0;padding:1
 .hidden{display:none!important}.muted{color:#63777d;font-size:13px}.ok{color:#087443;font-weight:700}.warn{color:#a15c00;font-weight:700}
 table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:9px;border-bottom:1px solid #e5eaeb;text-align:left}th{background:#f5f8f8}
 .badge{padding:4px 7px;border-radius:999px;background:#eef3f4}.empty{padding:20px;text-align:center;color:#687b80}
+.count-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.count-actions>*{flex:0 0 auto;min-width:0}.count-actions b{min-width:30px;text-align:center}
 #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#17323a;color:#fff;padding:11px 16px;border-radius:12px;display:none;z-index:20}
 </style>
 <style>
@@ -327,8 +328,12 @@ function refresh(){
  document.getElementById('sItens').textContent=codes.reduce((a,c)=>a+db.counts[c],0);
  let dif=codes.filter(c=>product(c)&&product(c).stock!=null&&db.counts[c]!==Number(product(c).stock)).length;
  document.getElementById('sDif').textContent=dif;
- document.getElementById('recent').innerHTML=(db.history.length?'<div style="text-align:right;margin-bottom:8px"><button class="danger" id="clearReadingsBtn">🗑️ Limpar tudo</button></div>':'')+db.history.slice(0,12).map((h,i)=>'<div style="padding:8px 0;border-bottom:1px solid #eee;display:flex;gap-content:space-between;justify-content:space-between;gap:8px;align-items:center"><div><b>'+escapeHtml(product(h.code)?.name||'Produto')+'</b><br><span class="muted">'+escapeHtml(h.code)+' • +1 • '+h.time+'</span></div><button class="danger" data-remove-reading="'+i+'" aria-label="Excluir leitura">🗑️</button></div>').join('')||'<div class="empty">Nenhuma leitura ainda.</div>';
- document.querySelectorAll('[data-remove-reading]').forEach(b=>b.onclick=()=>removeHistoryReading(Number(b.getAttribute('data-remove-reading'))));
+ const recentCodes=[...new Set([...db.history.map(h=>h.code),...codes])].filter(code=>Number(db.counts[code]||0)>0);
+ document.getElementById('recent').innerHTML=(recentCodes.length?'<div style="text-align:right;margin-bottom:8px"><button class="danger" id="clearReadingsBtn">🗑️ Limpar tudo</button></div>':'')+recentCodes.slice(0,12).map(code=>{const p=product(code)||{name:'Produto não cadastrado'},q=Number(db.counts[code]||0);return '<div style="padding:10px 0;border-bottom:1px solid #eee"><b>'+escapeHtml(p.name)+'</b><br><span class="muted">'+escapeHtml(code)+'</span><div class="count-actions" style="margin-top:7px"><button class="secondary" data-recent-minus="'+escapeHtml(code)+'">➖</button><b>'+q+'</b><button class="secondary" data-recent-plus="'+escapeHtml(code)+'">➕</button><button class="secondary" data-recent-edit="'+escapeHtml(code)+'">✏️ Alterar</button><button class="danger" data-recent-delete="'+escapeHtml(code)+'">🗑️</button></div></div>'}).join('')||'<div class="empty">Nenhuma leitura ainda.</div>';
+ document.querySelectorAll('[data-recent-minus]').forEach(b=>b.onclick=()=>{const code=b.getAttribute('data-recent-minus');setCount(code,Math.max(0,Number(db.counts[code]||0)-1))});
+ document.querySelectorAll('[data-recent-plus]').forEach(b=>b.onclick=()=>addCount(b.getAttribute('data-recent-plus'),product(b.getAttribute('data-recent-plus'))));
+ document.querySelectorAll('[data-recent-edit]').forEach(b=>b.onclick=()=>{const code=b.getAttribute('data-recent-edit'),value=prompt('Informe a quantidade correta:',String(db.counts[code]||0));if(value!==null)setCount(code,value)});
+ document.querySelectorAll('[data-recent-delete]').forEach(b=>b.onclick=()=>removeCountItem(b.getAttribute('data-recent-delete')));
  const clearBtn=document.getElementById('clearReadingsBtn');if(clearBtn)clearBtn.onclick=clearReadings;
  renderProductTable(document.getElementById('productSearch')?.value||'');
  renderResult();
@@ -434,7 +439,7 @@ window.addEventListener('pagehide',()=>{if(running)stopScanner('');});
 window.addEventListener('online',()=>{updateNetStatus();if(cloudUser){setCloudMsg('Internet voltou. Sincronizando automaticamente...');syncCloud();}});
 window.addEventListener('offline',()=>{markPending(true);setCloudMsg('Sem internet. Modo offline ativo: a contagem continua normalmente.');});
 updateNetStatus();
-if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js?v=14-atualizado-5').catch(()=>{});}
+if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js?v=14-atualizado-6').catch(()=>{});}
 refresh();
 </script>
 </body></html>
