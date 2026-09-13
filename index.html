@@ -103,7 +103,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:9px;borde
 </div>
 <div id="cloudLogged" class="hidden">
 <div>Conta: <span id="cloudUser" class="cloudStatus"></span></div>
-<button class="primary" id="cloudSyncBtn" style="margin-top:8px">☁️ Sincronizar agora</button>
+<button class="primary" id="cloudSyncBtn" style="margin-top:8px">☁️ Receber / sincronizar</button>
 <button class="secondary" id="cloudLogoutBtn" style="margin-top:8px">Sair da conta</button>
 </div>
 <div id="cloudMsg" class="muted" style="margin-top:10px"></div>
@@ -138,8 +138,9 @@ table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:9px;borde
 <div id="netStatus" style="position:fixed;right:10px;bottom:10px;z-index:19;padding:8px 11px;border-radius:999px;background:#eef8f6;font-size:12px;font-weight:700">● Online</div>
 <script>
 const KEY='estoque_app_v1';
-let db=JSON.parse(localStorage.getItem(KEY)||'{"products":{},"counts":{},"history":[]}');
-let localUpdatedAt=Number(localStorage.getItem(KEY+'_updatedAt')||Date.now());
+const storedDb=localStorage.getItem(KEY);
+let db=JSON.parse(storedDb||'{"products":{},"counts":{},"history":[]}');
+let localUpdatedAt=Number(localStorage.getItem(KEY+'_updatedAt')||(storedDb?'1':'0'));
 let cloudSaveTimer=null;
 let offlinePending=localStorage.getItem(KEY+'_pending')==='1';
 function markPending(v=true){offlinePending=v;localStorage.setItem(KEY+'_pending',v?'1':'0');updateNetStatus();}
@@ -169,17 +170,21 @@ try{firebase.initializeApp(firebaseConfig);}catch(e){}
 const auth=firebase.auth(); const cloudDb=firebase.database();
 function cloudPath(){return 'estoque/'+cloudUser.uid;}
 function cloudPayload(){return {db,updatedAt:localUpdatedAt};}
+function hasData(x){return !!(x&&((x.products&&Object.keys(x.products).length)||(x.counts&&Object.keys(x.counts).length)||(x.history&&x.history.length)));}
 async function syncCloud(){
  if(!cloudUser)return setCloudMsg('Entre na conta Firebase primeiro.');
  setCloudMsg('Sincronizando...');
  try{
   const snap=await cloudDb.ref(cloudPath()).once('value');
   const cloud=snap.val();
-  if(!cloud){await cloudDb.ref(cloudPath()).set(cloudPayload());markPending(false);setCloudMsg('Nuvem inicializada com os dados deste aparelho.');return;}
+  if(!cloud){
+    if(!hasData(db)){markPending(false);setCloudMsg('Não há dados na nuvem para receber. Abra o aparelho que contém os produtos e sincronize por ele.');return;}
+    await cloudDb.ref(cloudPath()).set(cloudPayload());markPending(false);setCloudMsg('Dados deste aparelho enviados para a nuvem.');return;
+  }
   const cloudTime=Number(cloud.updatedAt||0);
-  if(cloudTime>localUpdatedAt && cloud.db){
+  if((!hasData(db)&&hasData(cloud.db)) || (cloudTime>localUpdatedAt && cloud.db)){
     localSafetyBackup();db=cloud.db;localUpdatedAt=cloudTime;localStorage.setItem(KEY,JSON.stringify(db));localStorage.setItem(KEY+'_updatedAt',String(localUpdatedAt));markPending(false);refresh();setCloudMsg('Dados mais recentes da nuvem carregados neste aparelho.');
-  }else{
+  }else if(hasData(db)){
     const result=await cloudDb.ref(cloudPath()).transaction(current=>{
       if(current && Number(current.updatedAt||0)>localUpdatedAt) return;
       return cloudPayload();
@@ -189,7 +194,7 @@ async function syncCloud(){
       const latest=result.snapshot.val();
       if(latest && latest.db){localSafetyBackup();db=latest.db;localUpdatedAt=Number(latest.updatedAt||Date.now());localStorage.setItem(KEY,JSON.stringify(db));localStorage.setItem(KEY+'_updatedAt',String(localUpdatedAt));markPending(false);refresh();setCloudMsg('A nuvem tinha dados mais recentes; eles foram carregados neste aparelho.');}
     }
-  }
+  }else{markPending(false);setCloudMsg('A nuvem não possui produtos para receber. Nenhum dado foi apagado.');}
  }catch(e){markPending(true);setCloudMsg('Sem conexão no momento. Os dados continuam salvos neste aparelho e serão sincronizados quando a internet voltar.');}
 }
 auth.onAuthStateChanged(user=>{cloudUser=user||null;const login=document.getElementById('cloudLogin'),logged=document.getElementById('cloudLogged'),u=document.getElementById('cloudUser');if(user){login.classList.add('hidden');logged.classList.remove('hidden');u.textContent=user.email||'conta autenticada';setCloudMsg('Conta conectada.');syncCloud();}else{login.classList.remove('hidden');logged.classList.add('hidden');}});
