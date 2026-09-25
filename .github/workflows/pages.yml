@@ -22,13 +22,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Preparar busca por voz e confirmação
+      - name: Preparar busca por voz e melhorias
         run: |
           python - <<'PY'
           from pathlib import Path
           p = Path('index.html')
           s = p.read_text(encoding='utf-8')
-          tag = '<script src="voice-search.js?v=confirm-1"></script>'
+          tag = '<script src="voice-search.js?v=ux-2"></script>'
           if tag not in s:
               s = s.replace('</body>', tag + '\n</body>')
               p.write_text(s, encoding='utf-8')
