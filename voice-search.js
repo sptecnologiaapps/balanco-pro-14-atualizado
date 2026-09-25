@@ -94,6 +94,121 @@
     window.renderSearchResults=enhancedRenderSearchResults;
   }
 
+  function installCurrentConfirmButton(){
+    const current=document.getElementById('current');
+    if(!current)return;
+
+    const ensureButton=()=>{
+      if(current.classList.contains('hidden')||!current.innerHTML.trim())return;
+      if(current.querySelector('#finishCurrentProduct'))return;
+      const btn=document.createElement('button');
+      btn.id='finishCurrentProduct';
+      btn.type='button';
+      btn.className='primary';
+      btn.style.cssText='display:block;width:100%;font-size:18px;padding:16px;margin-top:14px';
+      btn.textContent='✅ CONFIRMAR PRODUTO';
+      btn.addEventListener('click',()=>{
+        current.classList.add('hidden');
+        current.innerHTML='';
+        const input=document.getElementById('manualCode');
+        if(input){input.value='';input.focus();}
+        const results=document.getElementById('searchResults');
+        if(results){results.classList.add('hidden');results.innerHTML='';}
+        if(typeof toast==='function')toast('Produto confirmado • pronto para o próximo');
+      });
+      current.appendChild(btn);
+    };
+
+    new MutationObserver(ensureButton).observe(current,{childList:true,subtree:false,attributes:true,attributeFilter:['class']});
+    ensureButton();
+  }
+
+  function installBulkDelete(){
+    const table=document.getElementById('productTable');
+    const search=document.getElementById('productSearch');
+    if(!table||!search||document.getElementById('bulkProductTools'))return;
+
+    let bulkMode=false;
+    const selected=new Set();
+
+    const tools=document.createElement('div');
+    tools.id='bulkProductTools';
+    tools.style.cssText='margin:10px 0 12px';
+    tools.innerHTML='<button class="secondary" id="bulkToggle" style="width:100%;padding:13px;font-weight:700">☑️ Selecionar vários</button>'+
+      '<div id="bulkActions" class="hidden" style="margin-top:8px">'+
+      '<div class="row"><button class="secondary" id="bulkSelectAll">☑️ Selecionar todos visíveis</button><button class="secondary" id="bulkCancel">Cancelar seleção</button></div>'+
+      '<button class="danger" id="bulkDeleteBtn" disabled style="display:block;width:100%;padding:14px;margin-top:8px;font-weight:700">🗑️ Excluir selecionados (0)</button>'+
+      '<p class="muted" style="margin:8px 0 0">A exclusão em lote remove os cadastros escolhidos. Contagens já registradas são preservadas.</p>'+
+      '</div>';
+    table.parentElement.insertBefore(tools,table);
+
+    const toggle=tools.querySelector('#bulkToggle');
+    const actions=tools.querySelector('#bulkActions');
+    const selectAll=tools.querySelector('#bulkSelectAll');
+    const cancel=tools.querySelector('#bulkCancel');
+    const delBtn=tools.querySelector('#bulkDeleteBtn');
+
+    function updateDeleteButton(){
+      delBtn.disabled=selected.size===0;
+      delBtn.textContent='🗑️ Excluir selecionados ('+selected.size+')';
+    }
+
+    function visibleCodes(){
+      return [...table.querySelectorAll('[data-delete-code]')].map(b=>b.getAttribute('data-delete-code')).filter(Boolean);
+    }
+
+    function decorateRows(){
+      const deleteButtons=[...table.querySelectorAll('[data-delete-code]')];
+      deleteButtons.forEach(del=>{
+        const code=del.getAttribute('data-delete-code');
+        const row=del.parentElement?.parentElement;
+        if(!row||row.querySelector('[data-bulk-code="'+CSS.escape(code)+'"]'))return;
+        const label=document.createElement('label');
+        label.dataset.bulkCode=code;
+        label.style.cssText='display:none;align-items:center;gap:10px;padding:8px 10px;margin-bottom:8px;border:1px solid #cfe4e1;border-radius:10px;background:#f5fbfa;font-weight:700';
+        label.innerHTML='<input type="checkbox" style="width:22px;height:22px;min-width:22px" '+(selected.has(code)?'checked':'')+'> Selecionar este produto';
+        const cb=label.querySelector('input');
+        cb.addEventListener('change',()=>{if(cb.checked)selected.add(code);else selected.delete(code);updateDeleteButton();});
+        row.insertBefore(label,row.firstChild);
+      });
+      table.querySelectorAll('[data-bulk-code]').forEach(label=>label.style.display=bulkMode?'flex':'none');
+      updateDeleteButton();
+    }
+
+    function setBulkMode(value){
+      bulkMode=!!value;
+      toggle.textContent=bulkMode?'☑️ Modo seleção ativo':'☑️ Selecionar vários';
+      actions.classList.toggle('hidden',!bulkMode);
+      if(!bulkMode)selected.clear();
+      decorateRows();
+    }
+
+    toggle.addEventListener('click',()=>setBulkMode(!bulkMode));
+    cancel.addEventListener('click',()=>setBulkMode(false));
+    selectAll.addEventListener('click',()=>{
+      const codes=visibleCodes();
+      const allSelected=codes.length&&codes.every(c=>selected.has(c));
+      codes.forEach(c=>{if(allSelected)selected.delete(c);else selected.add(c);});
+      table.querySelectorAll('[data-bulk-code] input').forEach(cb=>{const code=cb.closest('[data-bulk-code]').dataset.bulkCode;cb.checked=selected.has(code);});
+      updateDeleteButton();
+    });
+    delBtn.addEventListener('click',()=>{
+      if(!selected.size)return;
+      const n=selected.size;
+      if(!confirm('Excluir '+n+' cadastro(s) de produto de uma vez? As contagens já registradas serão mantidas.'))return;
+      selected.forEach(code=>{if(db.products?.[code])delete db.products[code];});
+      selected.clear();
+      setBulkMode(false);
+      if(typeof save==='function')save();
+      if(typeof toast==='function')toast(n+' produto(s) excluído(s)');
+    });
+
+    const observer=new MutationObserver(()=>decorateRows());
+    observer.observe(table,{childList:true,subtree:true});
+    search.addEventListener('input',()=>setTimeout(decorateRows,0));
+    decorateRows();
+  }
+
   function installVoiceSearch(){
     const input=document.getElementById('manualCode');
     const searchBtn=document.getElementById('readManual');
@@ -162,6 +277,8 @@
 
   function installEnhancements(){
     installProductConfirmation();
+    installCurrentConfirmButton();
+    installBulkDelete();
     installVoiceSearch();
   }
 
