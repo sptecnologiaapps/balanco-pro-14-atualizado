@@ -30,7 +30,8 @@ jobs:
           s = p.read_text(encoding='utf-8')
           tags = [
               '<script src="voice-search.js?v=ux-3"></script>',
-              '<script src="confirm-quantity-fix.js?v=2"></script>'
+              '<script src="confirm-quantity-fix.js?v=2"></script>',
+              '<script src="archive-products.js?v=1"></script>'
           ]
           for tag in tags:
               if tag not in s:
