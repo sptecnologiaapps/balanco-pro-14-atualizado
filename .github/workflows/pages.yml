@@ -44,7 +44,8 @@ jobs:
               '<script src="confirm-quantity-fix.js?v=2"></script>',
               '<script src="archive-products.js?v=1"></script>',
               '<script src="alterdata-import-v2.js?v=1"></script>',
-              '<script src="firebase-diagnostics.js?v=1"></script>'
+              '<script src="firebase-diagnostics.js?v=2"></script>',
+              '<script src="voice-search-v2.js?v=1"></script>'
           ]
           for tag in tags:
               if tag not in s:
