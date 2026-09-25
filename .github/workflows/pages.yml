@@ -28,11 +28,23 @@ jobs:
           from pathlib import Path
           p = Path('index.html')
           s = p.read_text(encoding='utf-8')
+
+          old_auto = "}catch(e){setCloudMsg('Não foi possível sincronizar automaticamente.');}"
+          new_auto = "}catch(e){markPending(true);if(typeof reportFirebaseError==='function')reportFirebaseError(e,'Sincronização automática');else setCloudMsg('Falha ao sincronizar com Firebase.');}"
+          if old_auto in s:
+              s = s.replace(old_auto, new_auto)
+
+          old_manual = "}catch(e){markPending(true);setCloudMsg('Sem conexão no momento. Os dados continuam salvos neste aparelho e serão sincronizados quando a internet voltar.');}"
+          new_manual = "}catch(e){markPending(true);if(typeof reportFirebaseError==='function')reportFirebaseError(e,'Sincronização Firebase');else setCloudMsg('Falha ao sincronizar com Firebase.');}"
+          if old_manual in s:
+              s = s.replace(old_manual, new_manual)
+
           tags = [
               '<script src="voice-search.js?v=ux-3"></script>',
               '<script src="confirm-quantity-fix.js?v=2"></script>',
               '<script src="archive-products.js?v=1"></script>',
-              '<script src="alterdata-import-v2.js?v=1"></script>'
+              '<script src="alterdata-import-v2.js?v=1"></script>',
+              '<script src="firebase-diagnostics.js?v=1"></script>'
           ]
           for tag in tags:
               if tag not in s:
