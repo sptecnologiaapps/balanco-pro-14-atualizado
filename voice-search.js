@@ -55,6 +55,45 @@
     else showNoVoiceResult(query);
   }
 
+  function installProductConfirmation(){
+    const original=window.renderSearchResults;
+    if(typeof original!=='function'||original.__largeConfirmProduct)return;
+
+    function enhancedRenderSearchResults(results){
+      const input=document.getElementById('manualCode');
+      const q=String(input?.value||'').trim();
+      const list=Array.isArray(results)?results:[];
+      const exact=list.filter(p=>String(p?.code||'').trim()===q||String(p?.altCode||'').trim()===q);
+
+      if(q&&exact.length===1){
+        const p=exact[0];
+        const box=document.getElementById('searchResults');
+        if(!box)return original(results);
+        box.classList.remove('hidden');
+        box.innerHTML='<div style="padding:14px;border:1px solid #cfe4e1;border-radius:14px;background:#f5fbfa">'+
+          '<div class="muted" style="margin-bottom:4px">Produto encontrado pelo código informado</div>'+
+          '<b style="font-size:18px">'+escapeHtml(p.name||'Produto')+'</b><br>'+
+          '<span class="muted">Código interno: '+escapeHtml(p.code||'—')+' • Alterdata: '+escapeHtml(p.altCode||'—')+'</span>'+
+          '<button class="primary" id="confirmExactProduct" style="display:block;width:100%;font-size:18px;padding:16px;margin-top:14px">✅ CONFIRMAR PRODUTO</button>'+
+          '</div>';
+        const confirmBtn=document.getElementById('confirmExactProduct');
+        confirmBtn.onclick=()=>{
+          if(typeof showCurrent==='function')showCurrent(p,db.counts[p.code]||0);
+          box.classList.add('hidden');
+          box.innerHTML='';
+          if(input)input.value='';
+          if(typeof toast==='function')toast('Produto confirmado');
+        };
+        return;
+      }
+
+      return original(results);
+    }
+
+    enhancedRenderSearchResults.__largeConfirmProduct=true;
+    window.renderSearchResults=enhancedRenderSearchResults;
+  }
+
   function installVoiceSearch(){
     const input=document.getElementById('manualCode');
     const searchBtn=document.getElementById('readManual');
@@ -121,6 +160,11 @@
     });
   }
 
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installVoiceSearch);
-  else installVoiceSearch();
+  function installEnhancements(){
+    installProductConfirmation();
+    installVoiceSearch();
+  }
+
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installEnhancements);
+  else installEnhancements();
 })();
